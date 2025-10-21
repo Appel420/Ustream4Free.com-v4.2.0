@@ -1,0 +1,16 @@
+const sessionUsername='Streamer1';
+const analyticsButton=document.getElementById('analytics-button');
+const analyticsDropdown=document.getElementById('analytics-dropdown');
+const visitorDisplay=document.getElementById('visitor-count');
+const keysList=document.getElementById('keys-list');
+const statusDiv=document.getElementById('action-status');
+const ctx=document.getElementById('analytics-chart').getContext('2d');
+analyticsButton.addEventListener('click',()=>{analyticsDropdown.style.display=analyticsDropdown.style.display==='none'?'block':'none';});
+const chartData={labels:[],datasets:[{label:'Visitors',data:[],borderColor:'rgba(75,192,192,1)',fill:false,tension:0.1},{label:'Stream Keys',data:[],borderColor:'rgba(255,99,132,1)',fill:false,tension:0.1}]};
+const analyticsChart=new Chart(ctx,{type:'line',data:chartData,options:{responsive:true,scales:{x:{title:{display:true,text:'Time'}},y:{beginAtZero:true}}}});
+const socket=io('http://localhost:3000',{withCredentials:true,auth:{username:sessionUsername}});
+socket.on('visitor-count-update',data=>{visitorDisplay.textContent=`Visitors: ${data.visitors}`;const time=new Date().toLocaleTimeString();chartData.labels.push(time);chartData.datasets[0].data.push(data.visitors);if(chartData.labels.length>20){chartData.labels.shift();chartData.datasets.forEach(ds=>ds.data.shift());}analyticsChart.update();});
+socket.on('stream-keys-update',data=>{keysList.innerHTML='';data.keys.forEach(key=>{const li=document.createElement('li');li.textContent=key;keysList.appendChild(li);});chartData.datasets[1].data.push(data.keys.length);if(chartData.datasets[1].data.length>20)chartData.datasets[1].data.shift();analyticsChart.update();});
+socket.emit('request-stream-keys',sessionUsername);
+document.getElementById('reset-visitor').addEventListener('click',async()=>{const res=await fetch('/analytics',{method:'DELETE'});const data=await res.json();if(data.status==='reset'){statusDiv.textContent='Visitor count reset!';chartData.datasets[0].data=[];chartData.labels=[];analyticsChart.update();}});
+document.getElementById('delete-keys').addEventListener('click',async()=>{const res=await fetch('/stream-keys',{method:'DELETE'});const data=await res.json();if(data.status==='deleted'){statusDiv.textContent='Stream keys deleted!';keysList.innerHTML='';chartData.datasets[1].data=[];analyticsChart.update();}});
