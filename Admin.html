@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Admin Dashboard</title></head>
+<body>
+<h3>Admin Dashboard</h3>
+<div>Total Visitors: <span id="global-visitors">0</span></div>
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<script>
+const globalDisplay=document.getElementById('global-visitors');
+const adminSocket=io('http://localhost:3000',{withCredentials:true,auth:{username:'Admin_appel420'}});
+adminSocket.on('visitor-count-update',data=>{globalDisplay.textContent=data.visitors;});
+</script>
+</body>
+</html>
