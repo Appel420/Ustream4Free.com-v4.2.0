@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><title>Streamer Dashboard</title></head>
+<body>
+<h2>Streamer Dashboard</h2>
+<div>
+<button id="analytics-button">Show Analytics ▼</button>
+<div id="analytics-dropdown" style="display:none; border:1px solid #ccc; padding:10px; margin-top:5px;">
+<div id="visitor-count">Visitors: 0</div>
+<ul id="keys-list"></ul>
+<canvas id="analytics-chart" width="400" height="200"></canvas>
+<div style="margin-top:5px;">
+<button id="reset-visitor">Reset Visitors</button>
+<button id="delete-keys">Delete Keys</button>
+<div id="action-status" style="color:green;margin-top:5px;"></div>
+</div>
+</div>
+</div>
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
