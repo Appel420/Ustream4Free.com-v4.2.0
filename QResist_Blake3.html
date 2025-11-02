@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLAKE3 + QResist Offline Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#1a1a2e; color:#fff; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; padding:2rem; }
+    .container { background:rgba(0,0,0,0.4); padding:2rem; border-radius:16px; width:100%; max-width:900px; }
+    h1 { text-align:center; margin-bottom:1rem; background: linear-gradient(45deg,#00f5ff,#ff0080); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    textarea { width:100%; min-height:100px; margin-bottom:1rem; padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.05); color:#fff; resize:vertical; }
+    button { padding:1rem 2rem; margin:0.5rem 0; border:none; border-radius:8px; background:linear-gradient(45deg,#00f5ff,#0080ff); cursor:pointer; font-weight:600; width:100%; }
+    .output, .bench { display:flex; flex-direction:column; gap:0.5rem; font-family:'Courier New',monospace; background:rgba(0,0,0,0.3); padding:1rem; border-radius:8px; word-break:break-all; margin-bottom:1rem; }
+    label { font-weight:bold; margin-bottom:0.2rem; display:block; }
+    canvas { background:rgba(0,0,0,0.4); border-radius:8px; padding:1rem; margin-bottom:1rem; }
+    .winner { color:#00ff00; font-weight:bold; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.8rem; margin-left:0.5rem; }
+    .fast { background:#00ff00; color:#000; }
+
+    /* Drag & Drop */
+    .drop-zone { border:2px dashed rgba(255,255,255,0.3); border-radius:12px; padding:2rem; text-align:center; margin-bottom:1rem; cursor:pointer; transition:0.2s; }
+    .drop-zone.dragover { border-color:#00f5ff; background:rgba(0,245,255,0.1); }
+    .file-info { font-size:0.9rem; color:#ccc; margin-top:0.5rem; }
+
+    /* Progress */
+    .progress-container { height:20px; background:rgba(255,255,255,0.1); border-radius:10px; overflow:hidden; margin:0.5rem 0; }
+    .progress-bar { height:100%; width:0; background:linear-gradient(90deg, #00f5ff, #0080ff); transition:none; }
+    .progress-label { font-size:0.9rem; margin-top:0.2rem; color:#ccc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>BLAKE3 + QResist Offline</h1>
+
+    <!-- Text Input -->
+    <textarea id="inputText" placeholder="Enter text to hash...">hello world</textarea>
+
+    <!-- File Drop -->
+    <div id="dropZone" class="drop-zone">
+      <p>Drag & drop a file here<br>or click to select</p>
+      <input type="file" id="fileInput" style="display:none;">
+      <div class="file-info" id="fileInfo"></div>
+    </div>
+
+    <button id="computeBtn">Compute Hashes & Benchmark (10K runs)</button>
+
+    <div class="output">
+      <div><label>BLAKE3 Hash (unkeyed 64 bytes):</label><span id="blake3Unkeyed"></span></div>
+      <div><label>BLAKE3 Hash (keyed 32 bytes):</label><span id="blake3Keyed"></span></div>
+      <div><label>BLAKE3 Derive Hash (32 bytes):</label><span id="blake3Derive"></span></div>
+      <div><label>SHA3‑512 (QResist) Hash:</label><span id="sha3"></span></div>
+    </div>
+
+    <canvas id="hashChart"></canvas>
+
+    <div class="bench">
+      <h3 style="margin:0 0 1rem;">Performance Benchmark (10,000 hashes)</h3>
+
+      <div>
+        <label>BLAKE3 (64B):</label>
+        <div class="progress-container"><div id="progBlake64" class="progress-bar"></div></div>
+        <div class="progress-label" id="benchBlake64">Ready</div>
+      </div>
+
+      <div>
+        <label>BLAKE3 Keyed (32B):</label>
+        <div class="progress-container"><div id="progBlakeKey" class="progress-bar"></div></div>
+        <div class="progress-label" id="benchBlakeKey">Ready</div>
+      </div>
+
+      <div>
+        <label>BLAKE3 Derive (32B):</label>
+        <div class="progress-container"><div id="progBlakeDerive" class="progress-bar"></div></div>
+        <div class="progress-label" id="benchBlakeDerive">Ready</div>
+      </div>
+
+      <div>
+        <label>SHA3-512:</label>
+        <div class="progress-container"><div id="progSha3" class="progress-bar"></div></div>
+        <div class="progress-label" id="benchSha3">Ready</div>
+      </div>
+
+      <div style="margin-top:1rem; font-weight:bold;" id="winner"></div>
+    </div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/blake3@2.1.7/dist/blake3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-sha3@0.9.3/src/sha3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    const inputEl = document.getElementById('inputText');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const blake3UnkeyedEl = document.getElementById('blake3Unkeyed');
+    const blake3KeyedEl = document.getElementById('blake3Keyed');
+    const blake3DeriveEl = document.getElementById('blake3Derive');
+    const sha3El = document.getElementById('sha3');
+    const ctx = document.getElementById('hashChart').getContext('2d');
+    const winnerEl = document.getElementById('winner');
+
+    const progBlake64 = document.getElementById('progBlake64');
+    const progBlakeKey = document.getElementById('progBlakeKey');
+    const progBlakeDerive = document.getElementById('progBlakeDerive');
+    const progSha3 = document.getElementById('progSha3');
+    const benchBlake64 = document.getElementById('benchBlake64');
+    const benchBlakeKey = document.getElementById('benchBlakeKey');
+    const benchBlakeDerive = document.getElementById('benchBlakeDerive');
+    const benchSha3 = document.getElementById('benchSha3');
+
+    let chart;
+    let currentData = 'hello world'; // default
+    let currentFile = null;
+
+    // === FILE DROP ===
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+
+    async function handleFile(file) {
+      currentFile = file;
+      fileInfo.textContent = `File: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      currentData = uint8;
+      inputEl.value = `[File: ${file.name}]`;
+    }
+
+    // === REAL PROGRESS BENCHMARK ===
+    async function runBenchmark(fn, label, progEl, resultEl, runs = 10000) {
+      progEl.style.width = '0%';
+      resultEl.textContent = 'Hashing... 0 / 10,000';
+
+      const start = performance.now();
+      let done = 0;
+
+      for (let i = 0; i < runs; i++) {
+        fn();
+        done++;
+        if (done % 1000 === 0) {
+          progEl.style.width = `${(done / runs) * 100}%`;
+          resultEl.textContent = `Hashing... ${done.toLocaleString()} / 10,000`;
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      progEl.style.width = '100%';
+      const end = performance.now();
+      const ms = (end - start).toFixed(2);
+      const perSec = Math.round(runs / (ms / 1000));
+      resultEl.innerHTML = `Done: ${ms} ms | <strong>${perSec.toLocaleString()}</strong> hashes/sec`;
+      return { ms, perSec, label };
+    }
+
+    // === COMPUTE ===
+    document.getElementById('computeBtn').addEventListener('click', async () => {
+      const isFile = currentData instanceof Uint8Array;
+      const data = isFile ? currentData : new TextEncoder().encode(inputEl.value || 'hello world');
+      const key = new Uint8Array(32); key.set([107,101,121,45,49]);
+
+      // === HASHES ===
+      blake3UnkeyedEl.textContent = blake3.hash(data, {length:64}).toString('hex');
+      blake3KeyedEl.textContent = blake3.hash(data, {length:32, key}).toString('hex');
+      blake3DeriveEl.textContent = blake3.deriveKey('ctx', data, {length:32}).toString('hex');
+      sha3El.textContent = sha3_512(data);
+
+      // === CHART ===
+      const labels = ['BLAKE3 (64B)', 'BLAKE3 Keyed (32B)', 'BLAKE3 Derive (32B)', 'SHA3-512'];
+      const dataSizes = [64, 32, 32, 64];
+      const backgroundColor = ['#00f5ff', '#0080ff', '#a100ff', '#ff0080'];
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Output Size (bytes)', data: dataSizes, backgroundColor, borderWidth: 1 }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false }, title: { display: true, text: 'Hash Output Length', color: '#fff' } },
+          scales: { y: { beginAtZero: true, max: 70, ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } }
+        }
+      });
+
+      // === BENCHMARKS ===
+      const results = [];
+      const hashFn = () => blake3.hash(data, {length:64});
+      const keyedFn = () => blake3.hash(data, {length:32, key});
+      const deriveFn = () => blake3.deriveKey('ctx', data, {length:32});
+      const sha3Fn = () => sha3_512(data);
+
+      results.push(await runBenchmark(hashFn, 'BLAKE3 (64B)', progBlake64, benchBlake64));
+      results.push(await runBenchmark(keyedFn, 'BLAKE3 Keyed', progBlakeKey, benchBlakeKey));
+      results.push(await runBenchmark(deriveFn, 'BLAKE3 Derive', progBlakeDerive, benchBlakeDerive));
+      results.push(await runBenchmark(sha3Fn, 'SHA3-512', progSha3, benchSha3));
+
+      const fastest = results.reduce((a, b) => a.perSec > b.perSec ? a : b);
+      winnerEl.innerHTML = `FASTEST: <span class="winner">${fastest.label}</span> <span class="badge fast">${fastest.perSec.toLocaleString()}/sec</span>`;
+    });
+  </script>
+</body>
+</html>
