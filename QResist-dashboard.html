@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Q-Resist BLAKE3 — Local Stream Studio (v3)</title>
+
+<!-- Hash libs -->
+<script defer src="https://cdn.jsdelivr.net/npm/blake3@2.1.7/dist/blake3.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/js-sha3@0.9.3/dist/sha3.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+:root{--bg:#0d0d1f;--card:#1a1a2e;--accent:#00d4ff;--accent2:#ff6b6b;--text:#e0e0e0;--warn:#ff6b6b;--good:#00ff88}
+html,body{height:100%;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--text);padding:12px}
+.container{max-width:980px;margin:0 auto;background:var(--card);padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.04)}
+h1{margin:0 0 12px;text-align:center;background:linear-gradient(45deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.panel{background:rgba(0,0,0,0.28);padding:12px;border-radius:8px;margin:8px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.col{flex:1;min-width:200px}
+textarea,input,select,button{font-family:monospace}
+textarea{width:100%;min-height:70px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:var(--text)}
+.button{display:block;padding:10px;border-radius:8px;border:none;background:linear-gradient(45deg,var(--accent),#0080ff);color:white;font-weight:700;cursor:pointer}
+.small{font-size:0.9rem;color:#cfcfcf}
+.status{font-weight:700;text-align:center;margin-top:6px}
+.drop-zone{border:2px dashed rgba(255,255,255,0.06);padding:12px;border-radius:8px;text-align:center;cursor:pointer}
+.drop-zone.dragover{border-color:var(--accent);background:rgba(0,212,255,0.04)}
+label{display:block;font-weight:700;color:var(--accent);margin-bottom:6px}
+.muted{color:#aaa;font-size:0.9rem}
+canvas{max-width:100%;height:110px}
+.code{font-family:monospace;background:rgba(255,255,255,0.02);padding:6px;border-radius:6px;display:inline-block}
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Q-Resist BLAKE3 — Local Stream Studio (v3)</h1>
+
+    <div class="panel">
+      <label>Quick Start (default)</label>
+      <div class="small">
+        Default relay address: <span class="code">ws://localhost:9898</span><br>
+        RTMP field is blank by default — enter your platform RTMP URL (e.g. <span class="code">rtmp://live.youtube.com/app/STREAMKEY</span>) or configure your relay with the RTMP on the relay side.
+      </div>
+    </div>
+
+    <div class="panel">
+      <label>Input / Stream Key</label>
+      <textarea id="inputText">hello world</textarea>
+      <div class="row" style="margin-top:8px">
+        <div class="col">
+          <div id="dropZone" class="drop-zone">Drag & drop file here or click to choose</div>
+          <input id="fileInput" type="file" accept="image/*,video/*,.txt,.js" style="display:none"/>
+          <div id="fileInfo" class="muted"></div>
+        </div>
+        <div class="col">
+          <label>Camera capture</label>
+          <button id="cameraBtn" class="button">Open Camera</button>
+          <video id="cameraStream" playsinline autoplay style="display:none;width:100%;border-radius:6px;margin-top:8px"></video>
+          <canvas id="photoCanvas" style="display:none"></canvas>
+          <div id="cameraStatus" class="muted status">camera idle</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <div class="col"><button id="computeBtn" class="button">Compute Hashes + Benchmark</button></div>
+        <div class="col"><button id="startStreamHashBtn" class="button">Start Chunked BLAKE3 Hash</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <label>Hashes</label>
+      <div class="small"><strong>BLAKE3 (64B):</strong> <span id="blake3Unkeyed"></span></div>
+      <div class="small"><strong>BLAKE3 Keyed (32B):</strong> <span id="blake3Keyed"></span></div>
+      <div class="small"><strong>BLAKE3 Derive (32B):</strong> <span id="blake3Derive"></span></div>
+      <div class="small"><strong>SHA3-512:</strong> <span id="sha3"></span></div>
+      <canvas id="hashChart"></canvas>
+      <div id="winner" class="status"></div>
+    </div>
+
+    <div class="panel">
+      <label>FFmpeg (optional, lazy-load WASM)</label>
+      <div class="small">Use to transcode local files to H.264/AAC (in-browser). Optional.</div>
+      <div class="row" style="margin-top:8px">
+        <button id="loadFFmpegBtn" class="button">Load FFmpeg (~30 MB)</button>
+        <button id="transcodeBtn" class="button" disabled>Transcode Selected</button>
+      </div>
+      <input id="ffmpegInput" type="file" accept="video/*,audio/*" style="display:none"/>
+      <div id="ffmpegStatus" class="muted status">FFmpeg not loaded</div>
+      <a id="ffmpegDownload" class="muted" style="display:none"></a>
+    </div>
+
+    <div class="panel">
+      <label>Live Streaming (Browser → Local Relay → RTMP)</label>
+      <div class="small">Browsers can’t open RTMP directly. Run the local relay (Node + ffmpeg) on your machine or another LAN host.</div>
+      <div style="margin-top:8px" class="row">
+        <input id="wsUrl" placeholder="ws://localhost:9898" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02)"/>
+        <input id="rtmpTarget" placeholder="rtmp://live.example.com/app/STREAMKEY" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02)"/>
+      </div>
+
+      <div style="margin-top:8px" class="row">
+        <select id="videoPreset" style="width:170px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02)">
+          <option value="2500000">1080p — 2.5 Mbps</option>
+          <option value="1200000" selected>720p — 1.2 Mbps</option>
+          <option value="800000">480p — 800 kbps</option>
+          <option value="400000">360p — 400 kbps</option>
+        </select>
+        <button id="startLocalStreamBtn" class="button" style="flex:1">Start Local Stream</button>
+        <button id="stopLocalStreamBtn" class="button" style="flex:1" disabled>Stop Stream</button>
+      </div>
+      <div id="streamLocalStatus" class="muted status">Idle</div>
+
+      <div class="panel" style="margin-top:10px">
+        <label>Options explained</label>
+        <div class="small">
+          <strong>WebSocket URL:</strong> address where the relay listens (default <span class="code">ws://localhost:9898</span>)<br>
+          <strong>RTMP Target:</strong> your platform ingest URL + stream key (if you prefer, you can start relay with RTMP on CLI so key never leaves browser)<br>
+          <strong>Video Preset:</strong> bitrate presets. Lower = less CPU & bandwidth, smaller quality.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="small">All operations run locally on your device (or local LAN). Your keys and data remain under your control.</div>
+		</div>
+<div> <label> Ustream4free </label>
+<a href="https://paypal.me/ustream4free" target="_blank">Donate</a> | 
+      <a href="https://github.com/Appel420/Ustream4Free.com-v4.2.0" target="_blank">GitHub</a>
+    </div>
+  </div>
+
+<script>
+/* Utilities & DOM */
+const $ = id => document.getElementById(id);
+/* DOM refs */
+const drop = $('dropZone'), fileInput = $('fileInput'), fileInfo = $('fileInfo'), input = $('inputText');
+const cameraBtn = $('cameraBtn'), cameraStream = $('cameraStream'), photoCanvas = $('photoCanvas'), cameraStatus = $('cameraStatus');
+const computeBtn = $('computeBtn'), startStreamHashBtn = $('startStreamHashBtn');
+const blake3Un = $('blake3Unkeyed'), blake3Key = $('blake3Keyed'), blake3Derive = $('blake3Derive'), sha3El = $('sha3');
+const loadFFmpegBtn = $('loadFFmpegBtn'), ffmpegInput = $('ffmpegInput'), transcodeBtn = $('transcodeBtn'), ffmpegStatus = $('ffmpegStatus'), ffmpegDownload = $('ffmpegDownload');
+const wsUrlInput = $('wsUrl'), rtmpTargetInput = $('rtmpTarget'), startLocalStreamBtn = $('startLocalStreamBtn'), stopLocalStreamBtn = $('stopLocalStreamBtn'), streamLocalStatus = $('streamLocalStatus');
+const videoPreset = $('videoPreset'), hashChartCanvas = $('hashChart'), winnerEl = $('winner');
+
+let file = null, data = 'hello world', localMedia = null, mediaRecorder = null, ws = null;
+
+/* File handling */
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+drop.addEventListener('drop', async e => { e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+async function handleFile(f){ if(!f) return; file = f; fileInfo.textContent = `File: ${f.name} (${(f.size/1024).toFixed(1)} KB)`; const buf = await f.arrayBuffer(); data = new Uint8Array(buf); input.value = `[File: ${f.name}]`; }
+
+/* Camera */
+cameraBtn.addEventListener('click', async () => {
+  cameraStatus.textContent = 'Requesting camera...';
+  try { localMedia = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false }); cameraStream.srcObject = localMedia; cameraStream.style.display = 'block'; cameraStatus.textContent = 'Tap video to capture photo'; cameraStream.onclick = capturePhoto; } catch(e){ cameraStatus.textContent = 'Camera denied'; console.error(e); }
+});
+function capturePhoto(){ const ctx = photoCanvas.getContext('2d'); photoCanvas.width = cameraStream.videoWidth; photoCanvas.height = cameraStream.videoHeight; ctx.drawImage(cameraStream, 0, 0); photoCanvas.toBlob(blob => { const photoFile = new File([blob], `photo_${Date.now()}.jpg`, { type:'image/jpeg' }); handleFile(photoFile); cameraStatus.textContent = 'Photo captured'; if(localMedia) localMedia.getTracks().forEach(t=>t.stop()); cameraStream.style.display = 'none'; }, 'image/jpeg', 0.9); }
+
+/* Hashing */
+async function bench(fn, runs = 1200){ const start = performance.now(); for(let i=0;i<runs;i++){ fn(); if(i%500===0) await new Promise(r=>setTimeout(r,0)); } const ms = performance.now()-start; return Math.round(runs/(ms/1000)); }
+computeBtn.addEventListener('click', async () => {
+  const d = data instanceof Uint8Array ? data : new TextEncoder().encode(input.value || 'hello world');
+  const key = new Uint8Array(32); key.set([107,101,121,45,49]);
+  try { $('blake3Unkeyed').textContent = blake3.hash(d,{length:64}).toString('hex'); $('blake3Keyed').textContent = blake3.hash(d,{length:32,key}).toString('hex'); $('blake3Derive').textContent = blake3.deriveKey('qresist',d,{length:32}).toString('hex'); $('sha3').textContent = sha3.sha3_512(d); } catch(e){ console.error(e); }
+  try{ if(window.hashChart) window.hashChart.destroy(); }catch(e){}
+  try { const ctx = hashChartCanvas.getContext('2d'); window.hashChart = new Chart(ctx, { type:'bar', data:{ labels:['BLAKE3 64','Key 32','Derive 32','SHA3-512'], datasets:[{label:'bytes',data:[64,32,32,64]}] }, options:{plugins:{legend:{display:false}}} }); }catch(e){}
+  const r1 = await bench(()=>blake3.hash(d,{length:64}),800).catch(()=>0); const r2 = await bench(()=>blake3.hash(d,{length:32,key}),800).catch(()=>0); const r3 = await bench(()=>blake3.deriveKey('qresist',d,{length:32}),800).catch(()=>0); const r4 = await bench(()=>sha3.sha3_512(d),800).catch(()=>0);
+  const fastest = [{label:'BLAKE3 64',per:r1},{label:'Keyed',per:r2},{label:'Derive',per:r3},{label:'SHA3',per:r4}].reduce((a,b)=>a.per>b.per?a:b);
+  winnerEl.innerHTML = `FASTEST: <strong>${fastest.label}</strong> <span style="background:var(--good);color:#000;padding:4px;border-radius:6px;margin-left:6px">${fastest.per.toLocaleString()}/sec</span>`;
+});
+
+/* Chunked hash */
+$('startStreamHashBtn').addEventListener('click', async () => {
+  if(!file){ alert('Drop a file first'); return; }
+  streamStatus('Streaming...');
+  const reader = file.stream().getReader();
+  const h = blake3.createHash();
+  let cnt=0;
+  while(true){
+    const {done,value} = await reader.read(); if(done) break;
+    h.update(value); cnt++; streamStatus(`Chunk ${cnt} | ${(value.length/1024).toFixed(1)} KB`); await new Promise(r=>setTimeout(r,0));
+  }
+  const el = document.getElementById('streamHash'); if(el) el.textContent = h.digest('hex'); streamStatus('Complete');
+});
+function streamStatus(txt){ const el = document.getElementById('streamStatus'); if(el) el.textContent = txt; }
+
+/* FFmpeg WASM lazy load */
+loadFFmpegBtn.addEventListener('click', () => {
+  if(window._ffmpeg){ ffmpegStatus.textContent = 'FFmpeg ready'; ffmpegInput.click(); transcodeBtn.disabled=false; return; }
+  ffmpegStatus.textContent = 'Loading FFmpeg (~30MB)...';
+  const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js';
+  s.onload = async () => { ffmpegStatus.textContent = 'Initializing FFmpeg...'; const { createFFmpeg, fetchFile } = FFmpeg; window._ffmpeg = createFFmpeg({ log:false }); await window._ffmpeg.load(); ffmpegStatus.textContent = 'FFmpeg ready. Choose a file.'; ffmpegInput.click(); };
+  s.onerror = ()=>{ ffmpegStatus.textContent = 'Error loading FFmpeg'; };
+  document.body.appendChild(s);
+});
+ffmpegInput.addEventListener('change', ()=>{ if(ffmpegInput.files.length){ transcodeBtn.disabled=false; ffmpegStatus.textContent='File ready'; }});
+transcodeBtn.addEventListener('click', async () => {
+  if(!window._ffmpeg || !ffmpegInput.files.length){ ffmpegStatus.textContent='Not ready'; return; }
+  const f = ffmpegInput.files[0];
+  ffmpegStatus.textContent = 'Transcoding...';
+  await window._ffmpeg.FS('writeFile', f.name, await FFmpeg.fetchFile(f));
+  const out = 'transcoded.mp4';
+  await window._ffmpeg.run('-i', f.name, '-c:v','libx264','-preset','veryfast','-c:a','aac','-b:a','128k', out);
+  const dataOut = window._ffmpeg.FS('readFile', out);
+  const blob = new Blob([dataOut.buffer], { type:'video/mp4' });
+  ffmpegDownload.href = URL.createObjectURL(blob); ffmpegDownload.download = out; ffmpegDownload.style.display='inline';
+  ffmpegStatus.textContent = 'Transcode complete';
+});
+
+/* Browser -> Relay streaming */
+startLocalStreamBtn.addEventListener('click', async () => {
+  const relayUrl = wsUrlInput.value.trim() || 'ws://localhost:9898';
+  const rtmp = rtmpTargetInput.value.trim();
+  if(!rtmp){ if(!confirm('RTMP target is empty. Start relay-only stream (no RTMP) or cancel?')) return; }
+  try{ streamLocalStatus.textContent = 'Requesting camera/mic...'; localMedia = await navigator.mediaDevices.getUserMedia({ video:true, audio:true }); }catch(e){ streamLocalStatus.textContent='Camera/mic denied'; console.error(e); return; }
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm';
+  const bits = parseInt(videoPreset.value||'1200000',10);
+  const options = { mimeType:mime, videoBitsPerSecond: bits };
+  mediaRecorder = new MediaRecorder(localMedia, options);
+  ws = new WebSocket(relayUrl);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { const init = JSON.stringify({ t:'init', rtmp: rtmp }); ws.send(init); mediaRecorder.start(250); startLocalStreamBtn.disabled = true; stopLocalStreamBtn.disabled = false; streamLocalStatus.textContent = 'Recording → relay'; };
+  ws.onerror = (e) => { console.error('WS err', e); streamLocalStatus.textContent = 'Relay connection error'; };
+  ws.onclose = () => { streamLocalStatus.textContent = 'Relay closed'; };
+  mediaRecorder.ondataavailable = async (ev) => {
+    if(!ev.data || ev.data.size===0) return;
+    try{
+      const buf = await ev.data.arrayBuffer();
+      const header = JSON.stringify({ t:'chunk', ts: Date.now(), size: buf.byteLength });
+      const headerBytes = new TextEncoder().encode(header);
+      const headerLenBuf = new Uint32Array([headerBytes.byteLength]).buffer;
+      const outBuf = new Uint8Array(4 + headerBytes.byteLength + buf.byteLength);
+      outBuf.set(new Uint8Array(headerLenBuf), 0);
+      outBuf.set(headerBytes, 4);
+      outBuf.set(new Uint8Array(buf), 4 + headerBytes.byteLength);
+      if(ws && ws.readyState === WebSocket.OPEN) ws.send(outBuf.buffer);
+    }catch(e){ console.error('send error', e); }
+  };
+  mediaRecorder.onstart = () => streamLocalStatus.textContent = 'Streaming to relay';
+  mediaRecorder.onstop = () => streamLocalStatus.textContent = 'Recorder stopped';
+});
+stopLocalStreamBtn.addEventListener('click', () => {
+  if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if(localMedia) localMedia.getTracks().forEach(t=>t.stop());
+  if(ws && ws.readyState === WebSocket.OPEN){ try{ ws.send(JSON.stringify({ t:'end' })); }catch(e){} ws.close(); }
+  startLocalStreamBtn.disabled = false; stopLocalStreamBtn.disabled = true; streamLocalStatus.textContent = 'Stopped';
+});
+
+</script>
+</body>
+</html>
