@@ -108,25 +108,25 @@ cd backend
 npm install  # Installs express 4.18.2, socket.io 4.7.2, bcrypt 5.1.0, connect-redis 7.0.0, redis 4.10.0, dotenv 16.3.1 (~200MB disk, bcrypt compile ~1min)
 	3	Environment Vars (.env in backend/):
 SESSION_SECRET=your-32-char-hex-key  # Generate: node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
-REDIS_URL=redis://localhost:6379  # Local Redis; prod: Render add-on URL
-PORT=3000  # Fallback; Render auto-sets 10000
+REDIS_URL=redis://localhost:9898  # Local Redis; prod: Render add-on URL
+PORT=9898  # Fallback; Render auto-sets 10000
 	4	Redis Setup (local test):
 # Install: brew install redis (Mac) or apt install redis-server (Linux)
-redis-server  # Run on port 6379
+redis-server  # Run on port 9898
 	5	Start Backend:
-npm start  # node server.js; binds PORT, connects Redis, listens http://localhost:3000
+npm start  # node server.js; binds PORT, connects Redis, listens http://localhost:9898
 	6	Frontend (static serve):
-	•	Open index.html in browser (localhost:3000 for Socket connects; update script.js/admin.html to prod backend URL post-deploy).
+	•	Open index.html in browser (localhost:9898 for Socket connects; update script.js/admin.html to prod backend URL post-deploy).
 	•	Admin: Open admin.html (connects as ‘Admin_appel420’).
 	7	Test:
 # Login (curl or Postman)
-curl -X POST http://localhost:3000/login -H "Content-Type: application/json" -d '{"username":"Admin_appel420","password":"Ustream4free2025!"}' -c cookies.txt  # 200 {"status":"ok"}
+curl -X POST http://localhost:9898/login -H "Content-Type: application/json" -d '{"username":"Admin_appel420","password":"Ustream4free2025!"}' -c cookies.txt  # 200 {"status":"ok"}
 
 # Keys (with session)
-curl -X POST http://localhost:3000/stream-keys -H "Content-Type: application/json" -d '{"key":"test-stream-key"}' -b cookies.txt  # 200 {"status":"ok","hashedKey":"sha3-512-hex"}
+curl -X POST http://localhost:9898/stream-keys -H "Content-Type: application/json" -d '{"key":"test-stream-key"}' -b cookies.txt  # 200 {"status":"ok","hashedKey":"sha3-512-hex"}
 
 # Socket test (wscat npm i -g)
-wscat -c ws://localhost:3000 -x '{"auth":{"username":"Admin_appel420"}}'  # Joins admin room, emits visitor-count-update
+wscat -c ws://localhost:9898 -x '{"auth":{"username":"Admin_appel420"}}'  # Joins admin room, emits visitor-count-update
 
 Deployment
 Frontend (GitHub Pages, Static)
@@ -137,7 +137,7 @@ Frontend (GitHub Pages, Static)
 Backend (Render, Dynamic)
 	1	Push backend/ to ustream4free-backend repo.
 	2	Render.com > New Web Service > Connect repo > Node runtime > Build: npm install > Start: npm start.
-	3	Env: SESSION_SECRET (32-hex), REDIS_URL (add-on internal: redis://red-xxx:25069, $7/mo).
+	3	Env: SESSION_SECRET (32-hex), REDIS_URL (add-on internal: redis://red-xxx:9898, $0/mo).
 	4	HTTPS auto. Live: https://ustream4free-backend.onrender.com (3-5min build). Free tier sleeps 15min idle.
 CI/CD (GitHub Actions)
 	•	.github/workflows/npm-publish.yml: On tag push, npm publish (add npm token as secret).
