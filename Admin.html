@@ -7,7 +7,7 @@
 <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 <script>
 const globalDisplay=document.getElementById('global-visitors');
-const adminSocket=io('http://localhost:3000',{withCredentials:true,auth:{username:'Admin_appel420'}});
+const adminSocket=io('http://localhost:9898',{withCredentials:true,auth:{username:'Admin_appel420'}});
 adminSocket.on('visitor-count-update',data=>{globalDisplay.textContent=data.visitors;});
 </script>
 </body>
