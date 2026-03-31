@@ -5,12 +5,15 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   ethicalcheck:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Run Ethical Check
         uses: apisec-inc/ethicalcheck-action@master  # Updated to a public version

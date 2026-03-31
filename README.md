@@ -166,9 +166,7 @@ Q-Resist Local Stream ZIP
 =========================
 
 Contents:
-- qresist_dashboard.html   (browser dashboard: capture, hashing, FFmpeg prep, streaming UI)
-- ws-rtmp-relay.js         (Node relay: receives WS blobs, pipes to ffmpeg -> RTMP)
-- ws-rtmp-relay.service    (example systemd unit) [optional]
+- QResist_Blake3.html     (browser dashboard: capture, hashing, FFmpeg prep, streaming UI)
 - README.txt               (this file)
 
 Quick prerequisites (one-time per streamer):
